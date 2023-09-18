@@ -8,6 +8,10 @@ import socketserver
 from threading import Condition
 from http import server
 
+import hashlib
+
+
+
 PAGE="""\
 <html>
 <head>
@@ -18,6 +22,8 @@ PAGE="""\
 </body>
 </html>
 """
+env = dict(map(lambda x:(x.strip().split("=")[0].strip(), x.strip().split("=")[1].strip()), map(lambda x:x.split("#")[0] if "=" in x.split("#")[0] else "None=None", open("./.env", "r").read().strip().split("\n"))))
+PORT = 8000 if "PORT" not in env else int(env["PORT"])
 
 class StreamingOutput(object):
     def __init__(self):
@@ -39,11 +45,20 @@ class StreamingOutput(object):
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
         print("test")
-        # print("self.request",self.request.body)
-        print("self.request",self.requestline)
-        print("self.request",self.request)
-        print("self.headers['Content-Length']",self.headers['Content-Length'])
-        print(self.rfile.read().decode('utf-8'))
+
+
+        if not self.headers['Content-Length']:
+            return self.send_error(403, "Please Login!")
+
+
+        print(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
+
+        
+        m = hashlib.sha256()
+        m.update("data".encode())
+        m.hexdigest()
+        # compare
+
         if self.path == '/':
             self.send_response(301)
             self.send_header('Location', '/index.html')
@@ -85,6 +100,6 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-address = ('', 8000)
+address = ('', PORT)
 server = StreamingServer(address, StreamingHandler)
 server.serve_forever()

@@ -4,14 +4,16 @@ from datetime import datetime
 import sqlite3
 import requests
 import json
+import hashlib
 
 env = dict(map(lambda x:(x.strip().split("=")[0].strip(), x.strip().split("=")[1].strip()), map(lambda x:x.split("#")[0] if "=" in x.split("#")[0] else "None=None", open("./.env", "r").read().strip().split("\n"))))
 
 HUB_NAME = env["HUB_NAME"]
 UPDATE_SERVER_POLL_FREQUENCY = 2
 CLOUD_IP = env["CLOUD_IP"]
+CLOUD_PORT = env["CLOUD_PORT"]
 HEADERS = {'content-type': 'application/json'}
-BASE_URL = 'http://{}:5000/api'.format(CLOUD_IP)
+BASE_URL = 'http://{}:{}}/api'.format(CLOUD_IP, CLOUD_PORT)
 
 # ser = serial.Serial(port='/dev/ttyACM0', baudrate=115200, timeout=1)
 
@@ -23,7 +25,7 @@ def create_db():
     try: 
         mydb = sqlite3.connect("processor.db")
         mycursor = mydb.cursor()
-        query = "CREATE TABLE hubdb(datetime TIMESTAMP, sensor CHAR, reading NUMERIC)"
+        query = "CREATE TABLE sensordb(readingDate TIMESTAMP, sensor CHAR, reading NUMERIC, sent INTEGER)"
         mycursor.execute(query)
         mydb.commit()
         mydb.close()
@@ -41,9 +43,9 @@ def waitResponse():
         return response.decode('utf-8').strip()
     return None
 
-def poll_microbit_data(valid_sensors):
-    # Polls for the temperature of the microbits. Returns a dictionary
-    # flushes data
+def poll_sensor_data(valid_sensors):
+    if len(valid_sensors) == 0:
+        return dict() 
     time.sleep(1)
     while waitResponse():
         continue
@@ -60,21 +62,19 @@ def poll_microbit_data(valid_sensors):
     while dat:
         if dat is None: break
         # need to check data
-        if dat[6:8] not in  ["we", "hi"] or len(dat) > 23 or len(dat) < 9: 
+        if len(dat) > 23 or len(dat) < 9 or dat[:8] not in  valid_sensors: 
             dat = waitResponse()
             continue
+
         #  Do store logic
-        binName = dat[0:2]
-        dtype = dat[6:8]
-        if binName not in valid_sensors:
-            pass
+        sensorName = dat[:8]
         value = float(dat[8:])
         
-        if binName in poll_result:
-            poll_result[binName][dtype] = value
+        if sensorName in poll_result:
+            poll_result[sensorName]["reading"] = poll_result[sensorName]["reading"]* 0.6 + value*0.4
         else:
-            poll_result[binName] = {
-                dtype: value,
+            poll_result[sensorName] = {
+                "reading": value,
                 "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         dat = waitResponse()
@@ -83,17 +83,57 @@ def poll_microbit_data(valid_sensors):
     print("Polling Completed!")
     return poll_result
 
-def publish_local_sensor_to_server(new_data):
+def publish_local_sensor_to_server(valid_sensors, token, conn):
+    
+    json_payload_string = json.dumps({"test":"bob"})
+    hash_obj = hashlib.sha256()
+    hash_obj.update((json_payload_string + token).encode())
+    print(json_payload_string)
     results = requests.put(BASE_URL + "/serverData/" + HUB_NAME, 
         headers = HEADERS, 
-        data = json.dumps(new_data), 
+        data = {
+        "jsonPayload" : json.dumps({"test":"bob"}),
+        "sha256" : hash_obj.hexdigest()
+        }, 
         timeout=5).json()
-    
     return results["sensors"]
+
+    mycursor = conn.cursor()
+    mycursor.execute('SELECT readingDate, sensor, reading FROM sensordb WHERE sent = 0 and sensor in {}'.format(json.dumps(valid_sensors)))
+    results = mycursor.fetchall()
+    
+    json_payload = dict()
+    for result in results:
+        if result[1]in json_payload:
+            json_payload[result[1]].append({
+                "readingDate": result[0],
+                "reading" : result[2]
+            })
+        else:
+            json_payload[result[1]] = [{
+                "readingDate": result[0],
+                "reading" : result[2]
+            }]
+    
+    json_payload_string = json.dumps(json_payload)
+    hash_obj = hashlib.sha256()
+    hash_obj.update((json_payload_string + token).encode())
+    data = {
+        "jsonPayload" : json_payload_string,
+        "sha256" : hash_obj.hexdigest()
+    }
+    results = requests.put(BASE_URL + "/serverData/" + HUB_NAME, 
+        headers = HEADERS, 
+        data = data, 
+        timeout=5).json()
+    mycursor = conn.cursor()
+    mycursor.execute('UPDATE sensordb SET sent = 1 WHERE sent = 0')
+    return results["sensors"]
+    
 
 def get_token():
     try:
-        return open("./SECRET", "r").read()
+        return None if len(open("./SECRET", "r").read().strip()) == 0 else open("./SECRET", "r").read().strip()
     except:
         return None
 
@@ -101,6 +141,7 @@ def initialize_connection_to_cloud():
     payload = requests.put(BASE_URL + "/assetFacility/initializeHub", json={"processorName":HUB_NAME}).json()
     while "token" not in payload:
         payload = requests.put(BASE_URL + "/assetFacility/initializeHub", json={"processorName":HUB_NAME}).json()
+    print("payload",payload)
     return payload["token"]
     
 def save_token(token):
@@ -125,30 +166,23 @@ if __name__ == "__main__":
         
         while True:
             polls += 1
-            sensor_values = poll_microbit_data(valid_sensors)
-            mycursor = mydb.cursor()
-            fire_alert = False
+            sensor_values = poll_sensor_data(valid_sensors)
+            # mycursor = mydb.cursor()
             
-            for microbit, data in sensor_values.items():
-                weight = height = 0.0
-                if "we" in data:
-                    weight = data["we"]
-                if "hi" in data:
-                    height = data["hi"]
-                timestamp = data["time"]
+            for sensor, data in sensor_values.items():
+                reading = data["reading"]
+                readingDate = data["time"]
+                query = 'INSERT INTO sensordb(readingDate, sensor, reading, sent) VALUES (?, ?, ?, ?)'
+                val = (readingDate, sensor, reading, 0)
+                print("adding to db ", val)
+                # mycursor.execute(query, val)
 
-                query = 'INSERT INTO hubdb(datetime, microbit, weight, height) VALUES (?, ?, ?, ?)'
-                temp_buffer.append([timestamp, microbit, weight, height])
-                val = (timestamp, microbit, weight, height)
-                print("adding ", val)
-                mycursor.execute(query, val)
-
-            mydb.commit()
+            # mydb.commit()
             print("Inserted records into database!")
 
             if polls >= UPDATE_SERVER_POLL_FREQUENCY:
-                valid_sensors = publish_local_sensor_to_server(temp_buffer) # Must use token 
-                print("Success!")
+                valid_sensors = publish_local_sensor_to_server(valid_sensors, token, mydb) # Must use token 
+                print("Updated server data.")
                 polls = 0
 
             temp_buffer = []
