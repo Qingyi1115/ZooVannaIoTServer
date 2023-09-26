@@ -13,7 +13,7 @@ UPDATE_SERVER_POLL_FREQUENCY = 2
 CLOUD_IP = env["CLOUD_IP"]
 CLOUD_PORT = env["CLOUD_PORT"]
 HEADERS = {'content-type': 'application/json'}
-BASE_URL = 'http://{}:{}}/api'.format(CLOUD_IP, CLOUD_PORT)
+BASE_URL = 'http://{}:{}/api'.format(CLOUD_IP, CLOUD_PORT)
 
 # ser = serial.Serial(port='/dev/ttyACM0', baudrate=115200, timeout=1)
 
@@ -21,7 +21,7 @@ COM_PORT = env["COM_PORT"]
 ser = serial.Serial(port=COM_PORT, baudrate=115200)
 ser.timeout = 1
 
-def create_db():
+def attempt_create_db():
     try: 
         mydb = sqlite3.connect("processor.db")
         mycursor = mydb.cursor()
@@ -30,6 +30,8 @@ def create_db():
         mydb.commit()
         mydb.close()
     except:
+        import traceback
+        traceback.print_exc()
         mydb.close()
 
 def sendCommand(command:str):
@@ -84,27 +86,15 @@ def poll_sensor_data(valid_sensors):
     return poll_result
 
 def publish_local_sensor_to_server(valid_sensors, token, conn):
-    
-    json_payload_string = json.dumps({"test":"bob"})
-    hash_obj = hashlib.sha256()
-    hash_obj.update((json_payload_string + token).encode())
-    print(json_payload_string)
-    results = requests.put(BASE_URL + "/serverData/" + HUB_NAME, 
-        headers = HEADERS, 
-        data = {
-        "jsonPayload" : json.dumps({"test":"bob"}),
-        "sha256" : hash_obj.hexdigest()
-        }, 
-        timeout=5).json()
-    return results["sensors"]
-
     mycursor = conn.cursor()
-    mycursor.execute('SELECT readingDate, sensor, reading FROM sensordb WHERE sent = 0 and sensor in {}'.format(json.dumps(valid_sensors)))
+    mycursor.execute('SELECT readingDate, sensor, reading FROM sensordb WHERE sent = 0')
     results = mycursor.fetchall()
+    print(results)
     
     json_payload = dict()
     for result in results:
-        if result[1]in json_payload:
+        if result[1] not in valid_sensors: continue
+        if result[1] in json_payload:
             json_payload[result[1]].append({
                 "readingDate": result[0],
                 "reading" : result[2]
@@ -114,21 +104,24 @@ def publish_local_sensor_to_server(valid_sensors, token, conn):
                 "readingDate": result[0],
                 "reading" : result[2]
             }]
-    
+
     json_payload_string = json.dumps(json_payload)
     hash_obj = hashlib.sha256()
     hash_obj.update((json_payload_string + token).encode())
-    data = {
-        "jsonPayload" : json_payload_string,
-        "sha256" : hash_obj.hexdigest()
-    }
-    results = requests.put(BASE_URL + "/serverData/" + HUB_NAME, 
+
+    new_valid_sensors = requests.post(BASE_URL + "/assetFacility/pushSensorReadings/" + HUB_NAME, 
         headers = HEADERS, 
-        data = data, 
+        json = {
+        "jsonPayloadString" : json_payload_string,
+        "sha256" : hash_obj.hexdigest()
+        }, 
         timeout=5).json()
-    mycursor = conn.cursor()
-    mycursor.execute('UPDATE sensordb SET sent = 1 WHERE sent = 0')
-    return results["sensors"]
+    
+    if "sensors" in new_valid_sensors:
+        mycursor.execute('UPDATE sensordb SET sent = 1 WHERE sent = 0')
+        valid_sensors = new_valid_sensors["sensors"]
+    else: print("Unable to connect to hub!")
+    return valid_sensors
     
 
 def get_token():
@@ -139,45 +132,44 @@ def get_token():
 
 def initialize_connection_to_cloud():
     payload = requests.put(BASE_URL + "/assetFacility/initializeHub", json={"processorName":HUB_NAME}).json()
-    while "token" not in payload:
-        payload = requests.put(BASE_URL + "/assetFacility/initializeHub", json={"processorName":HUB_NAME}).json()
-    print("payload",payload)
-    return payload["token"]
+    return payload["token"] if "token" in payload else None
     
 def save_token(token):
     f = open("SECRET", "w")
     f.write(token)
 
 if __name__ == "__main__":
-    create_db()
+    attempt_create_db()
     token = get_token()
     if token is None:
         while token is None:
+            print("Initializing connection with cloud!")
             token = initialize_connection_to_cloud()
-        time.sleep(5)
+            print("Token obtained results: ", token)
+            if token: break
+            time.sleep(5)
         save_token(token)
 
+    print("Starting program...\n")
     temp_buffer = []
-    valid_sensors = []
     mydb = sqlite3.connect("processor.db")
+    valid_sensors = publish_local_sensor_to_server([], token, mydb)
     try:
-        print("Starting program...\n")
         polls = 0
-        
         while True:
             polls += 1
             sensor_values = poll_sensor_data(valid_sensors)
-            # mycursor = mydb.cursor()
+            mycursor = mydb.cursor()
             
             for sensor, data in sensor_values.items():
                 reading = data["reading"]
                 readingDate = data["time"]
                 query = 'INSERT INTO sensordb(readingDate, sensor, reading, sent) VALUES (?, ?, ?, ?)'
                 val = (readingDate, sensor, reading, 0)
-                print("adding to db ", val)
-                # mycursor.execute(query, val)
+                print("adding to sensordb(readingDate, sensor, reading, sent) ", val)
+                mycursor.execute(query, val)
 
-            # mydb.commit()
+            mydb.commit()
             print("Inserted records into database!")
 
             if polls >= UPDATE_SERVER_POLL_FREQUENCY:
