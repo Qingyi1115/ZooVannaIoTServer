@@ -22,7 +22,7 @@ radio.onReceivedValue(function (sender, val) {
         serial.writeLine("radio rcv key, val: " + sender + ", " + val)
     }
     if (writeSerial) {
-        serial.writeLine("" + sender + val)
+        serial.writeLine("" + sender + "|" + val)
     }
     return 0;
 })
@@ -44,7 +44,7 @@ serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
     switch (data) {
         case "pol":
             let value = getSensorValues()
-            serial.writeLine(sensorName + value)
+            serial.writeLine(sensorName+ "|" + value)
             break;
     }
 })

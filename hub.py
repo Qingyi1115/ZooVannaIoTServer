@@ -30,8 +30,6 @@ def attempt_create_db():
         mydb.commit()
         mydb.close()
     except:
-        import traceback
-        traceback.print_exc()
         mydb.close()
 
 def sendCommand(command:str):
@@ -41,7 +39,6 @@ def sendCommand(command:str):
 def waitResponse():
     response = ser.readline()
     if response is not None and len(response) > 0:
-        print("response {}".format(response.decode('utf-8').strip()))
         return response.decode('utf-8').strip()
     return None
 
@@ -69,8 +66,8 @@ def poll_sensor_data(valid_sensors):
             continue
 
         #  Do store logic
-        sensorName = dat[:8]
-        value = float(dat[8:])
+        sensorName = dat.split("|")[0]
+        value = float(dat.split("|")[1])
         
         if sensorName in poll_result:
             poll_result[sensorName]["reading"] = poll_result[sensorName]["reading"]* 0.6 + value*0.4
@@ -89,7 +86,6 @@ def publish_local_sensor_to_server(valid_sensors, token, conn):
     mycursor = conn.cursor()
     mycursor.execute('SELECT readingDate, sensor, reading FROM sensordb WHERE sent = 0')
     results = mycursor.fetchall()
-    print(results)
     
     json_payload = dict()
     for result in results:
@@ -166,7 +162,6 @@ if __name__ == "__main__":
                 readingDate = data["time"]
                 query = 'INSERT INTO sensordb(readingDate, sensor, reading, sent) VALUES (?, ?, ?, ?)'
                 val = (readingDate, sensor, reading, 0)
-                print("adding to sensordb(readingDate, sensor, reading, sent) ", val)
                 mycursor.execute(query, val)
 
             mydb.commit()
