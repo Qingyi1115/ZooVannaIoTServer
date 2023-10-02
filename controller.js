@@ -57,10 +57,10 @@ let sensorType: string
 let writeSerial: boolean
 let testingSerial: boolean
 // ascii names
-sensorName = "00000001"
-sensorType = "TEMP"
+sensorName = "light1"
+sensorType = "LIGH"
 writeSerial = true
-testingSerial = true
+testingSerial = false
 radio.setGroup(212)
 radio.setTransmitPower(7)
 basic.showIcon(IconNames.Yes)
