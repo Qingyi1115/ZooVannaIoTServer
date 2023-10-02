@@ -45,30 +45,30 @@ def waitResponse():
 def poll_sensor_data(valid_sensors):
     if len(valid_sensors) == 0:
         return dict() 
-    time.sleep(1)
     while waitResponse():
+        time.sleep(0.5)
         continue
     sendCommand("pol")
     time.sleep(0.5)
     sendCommand("pol")
     time.sleep(0.5)
-    sendCommand("pol")
-    time.sleep(0.5)
     print("Polling sensor data...")
-    time.sleep(3)
+    time.sleep(2)
     poll_result = dict() 
     dat = waitResponse()
     while dat:
         if dat is None: break
         # need to check data
-        if len(dat) > 23 or len(dat) < 9 or dat[:8] not in  valid_sensors: 
+        sensorName = dat.split("|")[0]
+        if sensorName not in  valid_sensors: 
             dat = waitResponse()
             continue
-
         #  Do store logic
-        sensorName = dat.split("|")[0]
-        value = float(dat.split("|")[1])
-        
+        try:
+            value = float(dat.split("|")[1])
+        except:
+            continue
+
         if sensorName in poll_result:
             poll_result[sensorName]["reading"] = poll_result[sensorName]["reading"]* 0.6 + value*0.4
         else:
@@ -116,6 +116,7 @@ def publish_local_sensor_to_server(valid_sensors, token, conn):
     if "sensors" in new_valid_sensors:
         mycursor.execute('UPDATE sensordb SET sent = 1 WHERE sent = 0')
         valid_sensors = new_valid_sensors["sensors"]
+        print("Sent data to server.")
     else: print("Unable to connect to hub!")
     return valid_sensors
     
@@ -143,7 +144,7 @@ if __name__ == "__main__":
             token = initialize_connection_to_cloud()
             print("Token obtained results: ", token)
             if token: break
-            time.sleep(5)
+            time.sleep(3)
         save_token(token)
 
     print("Starting program...\n")
@@ -165,15 +166,15 @@ if __name__ == "__main__":
                 mycursor.execute(query, val)
 
             mydb.commit()
-            print("Inserted records into database!")
+            if len(sensor_values): print("Inserted records into database!")
+            else: print("No data")
 
             if polls >= UPDATE_SERVER_POLL_FREQUENCY:
                 valid_sensors = publish_local_sensor_to_server(valid_sensors, token, mydb) # Must use token 
-                print("Updated server data.")
                 polls = 0
 
             temp_buffer = []
-            time.sleep(3)
+            time.sleep(0.5)
 
     except KeyboardInterrupt:
         if ser.is_open:
