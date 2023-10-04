@@ -17,7 +17,6 @@ PAGE="""\
 <head>
 </head>
 <body>
-<center><h1>Raspberry Pi - test</h1></center>
 <center><img src="detected.jpeg" width="640" height="480"></center>
 </body>
 </html>
@@ -44,15 +43,9 @@ class StreamingOutput(object):
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
-        print("test")
-
-
         if not self.headers['Content-Length']:
             return self.send_error(403, "Please Login!")
-
-
         print(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
-
         
         m = hashlib.sha256()
         m.update("data".encode())
