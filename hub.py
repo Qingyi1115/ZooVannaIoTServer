@@ -42,18 +42,25 @@ def waitResponse():
         return response.decode('utf-8').strip()
     return None
 
-def poll_sensor_data(valid_sensors):
+def poll_sensor_data(valid_sensors, radioGroup):
     if len(valid_sensors) == 0:
         return dict() 
+    
+    # Broadcast radio group and sensors
+    for sensor in valid_sensors:
+        sendCommand("bct"+sensor+"|"+str(radioGroup))
+        time.sleep(0.1)
+
+    # Clears buffer
     while waitResponse():
-        time.sleep(0.5)
+        time.sleep(0.1)
         continue
     sendCommand("pol")
     time.sleep(0.5)
     sendCommand("pol")
     time.sleep(0.5)
     print("Polling sensor data...")
-    time.sleep(2)
+    time.sleep(1)
     poll_result = dict() 
     dat = waitResponse()
     while dat:
@@ -105,7 +112,7 @@ def publish_local_sensor_to_server(valid_sensors, token, conn):
     hash_obj = hashlib.sha256()
     hash_obj.update((json_payload_string + token).encode())
 
-    new_valid_sensors = requests.post(BASE_URL + "/assetFacility/pushSensorReadings/" + HUB_NAME, 
+    res = requests.post(BASE_URL + "/assetFacility/pushSensorReadings/" + HUB_NAME, 
         headers = HEADERS, 
         json = {
         "jsonPayloadString" : json_payload_string,
@@ -113,12 +120,12 @@ def publish_local_sensor_to_server(valid_sensors, token, conn):
         }, 
         timeout=5).json()
     
-    if "sensors" in new_valid_sensors:
+    if "sensors" in res:
         mycursor.execute('UPDATE sensordb SET sent = 1 WHERE sent = 0')
-        valid_sensors = new_valid_sensors["sensors"]
+        valid_sensors = res["sensors"]
         print("Sent data to server.")
     else: print("Unable to connect to hub!")
-    return valid_sensors
+    return valid_sensors, res["radioGroup"] if "radioGroup" in res else 255
     
 
 def get_token():
@@ -150,12 +157,12 @@ if __name__ == "__main__":
     print("Starting program...\n")
     temp_buffer = []
     mydb = sqlite3.connect("processor.db")
-    valid_sensors = publish_local_sensor_to_server([], token, mydb)
+    valid_sensors, radioGroup = publish_local_sensor_to_server([], token, mydb)
     try:
         polls = 0
         while True:
             polls += 1
-            sensor_values = poll_sensor_data(valid_sensors)
+            sensor_values = poll_sensor_data(valid_sensors, radioGroup)
             mycursor = mydb.cursor()
             
             for sensor, data in sensor_values.items():
@@ -170,7 +177,8 @@ if __name__ == "__main__":
             else: print("No data")
 
             if polls >= UPDATE_SERVER_POLL_FREQUENCY:
-                valid_sensors = publish_local_sensor_to_server(valid_sensors, token, mydb) # Must use token 
+                valid_sensors, radioGroup = publish_local_sensor_to_server(valid_sensors, token, mydb) # Must use token 
+                print("valid_sensors, radioGroup",valid_sensors, radioGroup)
                 polls = 0
 
             temp_buffer = []
