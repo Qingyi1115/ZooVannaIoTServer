@@ -42,10 +42,19 @@ class StreamingOutput(object):
         return self.buffer.write(buf)
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        print("hello", self.headers)
+        if self.headers['Content-Length']:
+            print(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Methods:', '*')
+        self.end_headers()
+
     def do_GET(self):
-        if not self.headers['Content-Length']:
-            return self.send_error(403, "Please Login!")
-        print(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
+        # if not self.headers['Content-Length']:
+        #     return self.send_error(401, "Please Login!")
+        if self.headers['Content-Length']:
+            print(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
         
         m = hashlib.sha256()
         m.update("data".encode())
