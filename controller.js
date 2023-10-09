@@ -1,15 +1,16 @@
-function substring (inputString: string, start: number, end: number) {
+function substring(inputString: string, start: number, end: number) {
     length = Math.min(inputString.length, end)
     i = start
+    result = ""
     while (i < length) {
-        result = "" + result + [0][i++]
+        result = result + inputString[i++]
     }
     return result
 }
 input.onButtonPressed(Button.A, function () {
     basic.showString(sensorName)
 })
-function getSensorValues () {
+function getSensorValues() {
     if (sensorType == "TEMP") {
         return input.temperature()
     } else if (sensorType == "LIGH") {
@@ -51,8 +52,11 @@ radio.onReceivedString(function (receivedString) {
 })
 serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
     data = serial.readLine()
+    if (testingSerial) serial.writeLine("received data " + data)
     cmd2 = substring(data, 0, 3)
+    if (testingSerial) serial.writeLine("cmd2 " + cmd2 + (cmd2 == "bct"))
     params2 = substring(data, 3, data.length)
+    if (testingSerial) serial.writeLine("params2 " + params2)
     switch (cmd2) {
         case "pol":
             if (radioGroup == 255) {
@@ -67,6 +71,7 @@ serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
             if (sensorName == sensorRadio2[0]) {
                 radioGroup = parseInt(sensorRadio2[1])
             }
+            if (testingSerial) { serial.writeLine("sensorRadio2 " + sensorRadio2[0] + sensorRadio2[1] + radioGroup) }
             radio.setGroup(255)
             radio.sendString(data);
             radio.setGroup(radioGroup)
@@ -90,10 +95,10 @@ let radioGroup = 255
 sensorName = "light1"
 sensorType = "LIGH"
 writeSerial = true
-testingSerial = false
+testingSerial = true
 radio.setGroup(radioGroup)
 radio.setTransmitPower(7)
 basic.showIcon(IconNames.Yes)
 basic.forever(function () {
-	
+
 })

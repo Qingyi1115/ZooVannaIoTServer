@@ -52,7 +52,8 @@ def poll_sensor_data(valid_sensors, radioGroup):
         time.sleep(0.1)
 
     # Clears buffer
-    while waitResponse():
+    while (test := waitResponse()):
+        # print("test",test)
         time.sleep(0.1)
         continue
     sendCommand("pol")
@@ -65,6 +66,7 @@ def poll_sensor_data(valid_sensors, radioGroup):
     dat = waitResponse()
     while dat:
         if dat is None: break
+        # print("dat",dat)
         # need to check data
         sensorName = dat.split("|")[0]
         if sensorName not in  valid_sensors: 
