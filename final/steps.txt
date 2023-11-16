@@ -1,0 +1,36 @@
+IoT Hardware Set-up Steps
+
+* In ZooVannaAdmin Front End App:
+ 1. Add Hub
+        ⁃ View All Customer Facility > View Toilet >  Hubs > Add Hub
+        ⁃ Name: QY Hub
+
+* Set up Raspberry Pi
+ 2.  Obtain backend server IP and port (for step 4, eg. 172.168.0.1 and 3000) 
+ 3. ssh/VNC into pi to start server.
+         - ssh pi@raspberrypi2.local 
+         ⁃ password: raspberry
+ 4. create/edit .env file that contains (Might want to install vim)
+          - this hub's name (as created in admin backend)
+          - server's IP (from step 2) and server port
+          - comport for microbit 
+          - CAMERA_NAME for camera name to be created
+ 5. Activate environment "source ~/tflite/bin/activate"
+ 6. Run files (python3 detect.py & python3 image_show.py)
+ 7. Open another terminal to run "python3 hub.py"
+ 8. Additional information 
+          - SECRET file is generated when hub is connected. Re-running the hub without deleting this file would allow the PI to reconnect with backend server at any point of time.
+ 9. To kill camera processes do "ps", look for python PID and "kill <PID>"
+
+Set up microbit
+7. Change controller file sensor name and type. (Will only be identified if registered on Backend server)
+8. Download hex into microbit.
+
+In ZooVannaAdmin Front End App:
+ 9. Add Sensor
+         ⁃ View “QY Hub” > Add Sensor
+  ⁃ Name: temp1 / light1
+         ⁃ Sensor Type: temperature / light
+  - Name: camera2
+         - Sensor Type: camera
+ 10. Able to see sensors data coming in
